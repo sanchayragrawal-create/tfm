@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Triveni Finance Manager</title>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <script type="text/javascript">
+    const { useState } = React;
+    const yyyy_mm_dd = (d) => new Date(d).toISOString().substring(0, 10);
+
+    function App() {
+      const [records, setRecords] = useState(() => JSON.parse(localStorage.getItem("financeRecords") || "[]"));
+      const [view, setView] = useState("table");
+      const [search, setSearch] = useState("");
+      const [filterStatus, setFilterStatus] = useState("all");
+      const [showArchived, setShowArchived] = useState(false);
+
+      const save = (data) => {
+        setRecords(data);
+        localStorage.setItem("financeRecords", JSON.stringify(data));
+      };
+
+      const addRecord = (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const principal = Number(fd.get("principal"));
+        const months = Number(fd.get("frequency"));
+        const rate = months === 11 ? 2 : 3;
+
+        const totalInterest = principal * rate * months / 100;
+        const total = principal + totalInterest;
+        const installmentCount = months === 12 ? 11 : months;
+        const emi = Math.round(total / installmentCount);
+
+        const startDate = fd.get("startDate");
+        const schedule = Array.from({ length: installmentCount }, (_, i) => {
+          const due = new Date(startDate);
+          due.setMonth(due.getMonth() + i);
+          return { dueDate: yyyy_mm_dd(due), amount: emi, paid: false };
+        });
+
+        const record = {
+          id: Date.now(),
+          chassis: fd.get("chassis"),
+          regNo: fd.get("regNo"),
+          customer: fd.get("customer"),
+          mobile: fd.get("mobile"),
+          principal,
+          months,
+          schedule,
+          archived: false
+        };
+
+        save([...records, record]);
+        e.target.reset();
+      };
+
+      const togglePaid = (rid, idx) => {
+        save(records.map(r => r.id === rid ? { ...r, schedule: r.schedule.map((s,i)=>i===idx?{...s,paid:!s.paid}:s) } : r));
+      };
+
+      const toggleArchive = (rid) => {
+        save(records.map(r => r.id === rid ? { ...r, archived: !r.archived } : r));
+      };
+
+      const deleteRecord = (rid) => {
+        if (confirm("Delete permanently?")) save(records.filter(r => r.id !== rid));
+      };
+
+      const normalize = v => (v ?? "").toString().toLowerCase();
+
+      const filteredRecords = records.filter(r => {
+        if (!showArchived && r.archived) return false;
+        const q = normalize(search);
+        if (q && ![r.chassis, r.regNo, r.customer, r.mobile].some(f => normalize(f).includes(q))) return false;
+
+        const unpaid = r.schedule.some(s => !s.paid);
+        const today = yyyy_mm_dd(new Date());
+        const overdue = r.schedule.some(s => !s.paid && s.dueDate < today);
+
+        if (filterStatus === "paid" && unpaid) return false;
+        if (filterStatus === "unpaid" && !unpaid) return false;
+        if (filterStatus === "overdue" && !overdue) return false;
+        return true;
+      });
+
+      const exportCSV = () => {
+        const headers = ["Chassis","Reg No","Customer","Mobile","Installments Paid","Total Installments"];
+        const rows = filteredRecords.map(r => [
+          r.chassis || "",
+          r.regNo || "",
+          r.customer || "",
+          r.mobile || "",
+          r.schedule.filter(s => s.paid).length,
+          r.schedule.length
+        ]);
+        const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "finance_records.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      return React.createElement("div", null,
+        React.createElement("h2", null, "🚀 Triveni Finance Manager"),
+
+        React.createElement("form", { onSubmit: addRecord },
+          React.createElement("input", { name: "chassis", placeholder: "Chassis", required: true }),
+          React.createElement("input", { name: "regNo", placeholder: "Reg No" }),
+          React.createElement("input", { name: "customer", placeholder: "Customer Name", required: true }),
+          React.createElement("input", { name: "mobile", placeholder: "Mobile" }),
+          React.createElement("input", { name: "principal", type: "number", placeholder: "Principal Amount", required: true }),
+          React.createElement("input", { name: "frequency", type: "number", placeholder: "Months", required: true }),
+          React.createElement("input", { name: "startDate", type: "date", required: true }),
+          React.createElement("button", null, "Add Finance")
+        ),
+
+        React.createElement("hr"),
+
+        React.createElement("input", {
+          value: search,
+          onChange: e=>setSearch(e.target.value),
+          placeholder: "Search"
+        }),
+        React.createElement("button", { onClick: exportCSV }, "Export CSV"),
+
+        React.createElement("table", { border: "1", style: { marginTop: 20, width:"100%" } },
+          React.createElement("thead", null,
+            React.createElement("tr", null,
+              React.createElement("th", null, "Vehicle"),
+              React.createElement("th", null, "Customer"),
+              React.createElement("th", null, "Paid/Total"),
+              React.createElement("th", null, "Actions")
+            )
+          ),
+          React.createElement("tbody", null,
+            filteredRecords.map(r =>
+              React.createElement("tr", { key: r.id },
+                React.createElement("td", null, r.chassis, " ", r.regNo),
+                React.createElement("td", null, r.customer),
+                React.createElement("td", null,
+                  r.schedule.filter(s=>s.paid).length, "/", r.schedule.length
+                ),
+                React.createElement("td", null,
+                  React.createElement("button", { onClick: ()=>toggleArchive(r.id) }, r.archived?"Restore":"Archive"),
+                  React.createElement("button", { onClick: ()=>deleteRecord(r.id) }, "Delete")
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(React.createElement(App));
+  </script>
+
+</body>
+</html>
