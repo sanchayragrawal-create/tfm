@@ -1,171 +1,1246 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Triveni Finance Manager</title>
-</head>
-<body>
-  <div id="root"></div>
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 
-  <!-- React via CDN -->
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+// --- FIREBASE IMPORTS AND SETUP ---
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp, runTransaction } from 'firebase/firestore';
 
-  <script type="text/javascript">
-    const { useState } = React;
-    const yyyy_mm_dd = (d) => new Date(d).toISOString().substring(0, 10);
+// --- ICON COMPONENTS (Lucide Style Inline SVGs) ---
+const PlusIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5v14"/></svg>;
+const ListIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /><line x1="6" y1="20" x2="6" y2="16" /></svg>;
+const UsersIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+const CoinsIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="18" r="4"/><circle cx="16" cy="6" r="4"/><path d="M12 18V6"/></svg>;
+const WalletIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v12a2 2 0 0 1-2 2H5"/><path d="M18 17a2 2 0 0 0 2-2V9"/><path d="M5 17h14a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2z"/></svg>;
+const CalendarIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>;
+const SaveIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>;
+const EditIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>;
+const TrashIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+const XIcon = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>;
 
-    function App() {
-      const [records, setRecords] = useState(() => JSON.parse(localStorage.getItem("financeRecords") || "[]"));
-      const [view, setView] = useState("table");
-      const [search, setSearch] = useState("");
-      const [filterStatus, setFilterStatus] = useState("all");
-      const [showArchived, setShowArchived] = useState(false);
 
-      const save = (data) => {
-        setRecords(data);
-        localStorage.setItem("financeRecords", JSON.stringify(data));
-      };
+// --- SHARED UI COMPONENTS ---
 
-      const addRecord = (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const principal = Number(fd.get("principal"));
-        const months = Number(fd.get("frequency"));
-        const rate = months === 11 ? 2 : 3;
+const Card = ({ title, value, subtitle, icon }) => (
+    <div className="p-6 bg-white rounded-xl shadow-lg flex items-start space-x-4 transition hover:shadow-xl">
+        <div className="p-3 rounded-full bg-blue-100 text-blue-600">
+            {icon}
+        </div>
+        <div>
+            <p className="text-sm font-medium text-gray-500">{title}</p>
+            <p className="text-2xl font-bold text-gray-900">{value}</p>
+            <p className="text-xs text-gray-400 mt-1">{subtitle}</p>
+        </div>
+    </div>
+);
 
-        const totalInterest = principal * rate * months / 100;
-        const total = principal + totalInterest;
-        const installmentCount = months === 12 ? 11 : months;
-        const emi = Math.round(total / installmentCount);
-
-        const startDate = fd.get("startDate");
-        const schedule = Array.from({ length: installmentCount }, (_, i) => {
-          const due = new Date(startDate);
-          due.setMonth(due.getMonth() + i);
-          return { dueDate: yyyy_mm_dd(due), amount: emi, paid: false };
-        });
-
-        const record = {
-          id: Date.now(),
-          chassis: fd.get("chassis"),
-          regNo: fd.get("regNo"),
-          customer: fd.get("customer"),
-          mobile: fd.get("mobile"),
-          principal,
-          months,
-          schedule,
-          archived: false
-        };
-
-        save([...records, record]);
-        e.target.reset();
-      };
-
-      const togglePaid = (rid, idx) => {
-        save(records.map(r => r.id === rid ? { ...r, schedule: r.schedule.map((s,i)=>i===idx?{...s,paid:!s.paid}:s) } : r));
-      };
-
-      const toggleArchive = (rid) => {
-        save(records.map(r => r.id === rid ? { ...r, archived: !r.archived } : r));
-      };
-
-      const deleteRecord = (rid) => {
-        if (confirm("Delete permanently?")) save(records.filter(r => r.id !== rid));
-      };
-
-      const normalize = v => (v ?? "").toString().toLowerCase();
-
-      const filteredRecords = records.filter(r => {
-        if (!showArchived && r.archived) return false;
-        const q = normalize(search);
-        if (q && ![r.chassis, r.regNo, r.customer, r.mobile].some(f => normalize(f).includes(q))) return false;
-
-        const unpaid = r.schedule.some(s => !s.paid);
-        const today = yyyy_mm_dd(new Date());
-        const overdue = r.schedule.some(s => !s.paid && s.dueDate < today);
-
-        if (filterStatus === "paid" && unpaid) return false;
-        if (filterStatus === "unpaid" && !unpaid) return false;
-        if (filterStatus === "overdue" && !overdue) return false;
-        return true;
-      });
-
-      const exportCSV = () => {
-        const headers = ["Chassis","Reg No","Customer","Mobile","Installments Paid","Total Installments"];
-        const rows = filteredRecords.map(r => [
-          r.chassis || "",
-          r.regNo || "",
-          r.customer || "",
-          r.mobile || "",
-          r.schedule.filter(s => s.paid).length,
-          r.schedule.length
-        ]);
-        const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "finance_records.csv";
-        a.click();
-        URL.revokeObjectURL(url);
-      };
-
-      return React.createElement("div", null,
-        React.createElement("h2", null, "🚀 Triveni Finance Manager"),
-
-        React.createElement("form", { onSubmit: addRecord },
-          React.createElement("input", { name: "chassis", placeholder: "Chassis", required: true }),
-          React.createElement("input", { name: "regNo", placeholder: "Reg No" }),
-          React.createElement("input", { name: "customer", placeholder: "Customer Name", required: true }),
-          React.createElement("input", { name: "mobile", placeholder: "Mobile" }),
-          React.createElement("input", { name: "principal", type: "number", placeholder: "Principal Amount", required: true }),
-          React.createElement("input", { name: "frequency", type: "number", placeholder: "Months", required: true }),
-          React.createElement("input", { name: "startDate", type: "date", required: true }),
-          React.createElement("button", null, "Add Finance")
-        ),
-
-        React.createElement("hr"),
-
-        React.createElement("input", {
-          value: search,
-          onChange: e=>setSearch(e.target.value),
-          placeholder: "Search"
-        }),
-        React.createElement("button", { onClick: exportCSV }, "Export CSV"),
-
-        React.createElement("table", { border: "1", style: { marginTop: 20, width:"100%" } },
-          React.createElement("thead", null,
-            React.createElement("tr", null,
-              React.createElement("th", null, "Vehicle"),
-              React.createElement("th", null, "Customer"),
-              React.createElement("th", null, "Paid/Total"),
-              React.createElement("th", null, "Actions")
-            )
-          ),
-          React.createElement("tbody", null,
-            filteredRecords.map(r =>
-              React.createElement("tr", { key: r.id },
-                React.createElement("td", null, r.chassis, " ", r.regNo),
-                React.createElement("td", null, r.customer),
-                React.createElement("td", null,
-                  r.schedule.filter(s=>s.paid).length, "/", r.schedule.length
-                ),
-                React.createElement("td", null,
-                  React.createElement("button", { onClick: ()=>toggleArchive(r.id) }, r.archived?"Restore":"Archive"),
-                  React.createElement("button", { onClick: ()=>deleteRecord(r.id) }, "Delete")
-                )
-              )
-            )
-          )
-        )
-      );
+const Button = ({ children, onClick, primary = false, type = 'button', className = '', size = 'md', ...props }) => {
+    let baseClasses = 'font-semibold rounded-lg shadow-md transition duration-150 ease-in-out flex items-center justify-center ';
+    
+    if (primary) {
+        baseClasses += 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-4 focus:ring-blue-300';
+    } else {
+        baseClasses += 'bg-gray-200 text-gray-700 hover:bg-gray-300 focus:ring-4 focus:ring-gray-300';
     }
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(React.createElement(App));
-  </script>
+    if (size === 'sm') {
+        baseClasses += ' px-3 py-1 text-sm';
+    } else {
+        baseClasses += ' px-5 py-2';
+    }
 
-</body>
-</html>
+    return (
+        <button
+            type={type}
+            onClick={onClick}
+            className={`${baseClasses} ${className}`}
+            {...props}
+        >
+            {children}
+        </button>
+    );
+};
+
+const SectionTitle = ({ title }) => (
+    <h2 className="text-xl font-semibold text-gray-800 border-b pb-2 mb-4 mt-6">{title}</h2>
+);
+
+const Input = ({ label, name, value, onChange, type = 'text', required = false, step, className = '' }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700">
+            {label}
+        </label>
+        {type === 'textarea' ? (
+             <textarea
+                id={name}
+                name={name}
+                value={value}
+                onChange={onChange}
+                required={required}
+                rows="3"
+                className={`mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 ${className}`}
+            />
+        ) : (
+            <input
+                id={name}
+                name={name}
+                type={type}
+                value={value}
+                onChange={onChange}
+                required={required}
+                step={step}
+                min={type === 'number' ? 0 : undefined}
+                className={`mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 ${className}`}
+            />
+        )}
+    </div>
+);
+
+const Select = ({ label, name, value, onChange, options, required = false }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700">
+            {label}
+        </label>
+        <select
+            id={name}
+            name={name}
+            value={value}
+            onChange={onChange}
+            required={required}
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 bg-white"
+        >
+            {options.map(option => (
+                <option key={option} value={option}>
+                    {option}
+                </option>
+            ))}
+        </select>
+    </div>
+);
+
+const ReadOnlyInput = ({ label, value }) => (
+    <div>
+        <label className="block text-sm font-medium text-gray-700">
+            {label}
+        </label>
+        <div className="mt-1 block w-full border border-gray-200 bg-gray-50 rounded-md shadow-sm p-3 text-gray-900 font-medium">
+            {value}
+        </div>
+    </div>
+);
+
+const TableHeader = ({ title }) => (
+    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        {title}
+    </th>
+);
+
+const TableCell = ({ content, subContent, colSpan, isOverdue = false, className = '' }) => (
+    <td colSpan={colSpan} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${className}`}>
+        {content}
+        {subContent && (
+            <span className={`block text-xs mt-1 ${isOverdue ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                {subContent}
+            </span>
+        )}
+    </td>
+);
+
+// --- FIREBASE HELPER VARIABLES ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// Collection path for public data
+const getCollectionPath = () => `/artifacts/${appId}/public/data/finance_records`;
+
+// Simple Date Helpers (mimicking date-fns for safety)
+const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date)) return 'N/A';
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+const addMonths = (date, months) => {
+    const d = new Date(date);
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().split('T')[0]; // Return YYYY-MM-DD
+};
+const differenceInDays = (date1, date2) => {
+    const d1 = new Date(date1);
+    const d2 = new Date(date2);
+    // Calculate time difference in milliseconds
+    const diffTime = Math.abs(d2.getTime() - d1.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+const isPast = (dateString) => {
+    const today = new Date();
+    // Normalize today's date to start of day for accurate comparison
+    const normalizedToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const due = new Date(dateString);
+    // Normalize due date to start of day
+    const normalizedDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    
+    // An item is past if its normalized date is strictly less than today's normalized date.
+    return normalizedDue < normalizedToday;
+};
+const isTodayOrFuture = (dateString) => {
+    const today = new Date();
+    const normalizedToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const due = new Date(dateString);
+    const normalizedDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    return normalizedDue >= normalizedToday;
+};
+const todayDate = new Date().toISOString().split('T')[0];
+
+const StatusBadge = ({ status }) => {
+    let classes = 'px-3 py-1 text-xs font-semibold rounded-full ';
+    switch (status) {
+        case 'Paid': classes += 'bg-green-100 text-green-700'; break;
+        case 'Overdue': classes += 'bg-red-100 text-red-700'; break;
+        case 'Pending': classes += 'bg-yellow-100 text-yellow-700'; break;
+        case 'RC Pending': classes += 'bg-red-100 text-red-700'; break;
+        case 'RC Done': classes += 'bg-green-100 text-green-700'; break;
+        case 'Active': classes += 'bg-blue-100 text-blue-700'; break;
+        case 'Completed': classes += 'bg-gray-100 text-gray-700'; break;
+        default: classes += 'bg-gray-100 text-gray-700';
+    }
+    return <span className={classes}>{status}</span>;
+};
+
+// --- CORE BUSINESS LOGIC (Provided by User) ---
+
+/**
+ * Calculates the EMI amount (simple flat rate) and generates the full schedule.
+ * @param {object} data - Finance details
+ * @returns {object} {emiAmount, totalAmount, schedule}
+ */
+const calculateSchedule = (data) => {
+    const principal = parseFloat(data.financeAmount);
+    const rate = parseFloat(data.interestRate) / 100; // Monthly Rate
+    const duration = parseInt(data.totalDurationMonths, 10);
+    const frequency = parseInt(data.installmentFrequencyMonths, 10);
+    const dateOfFinance = data.dateOfFinance;
+
+    if (isNaN(principal) || isNaN(rate) || isNaN(duration) || duration === 0 || frequency === 0) {
+        return { emiAmount: 0, totalAmount: 0, schedule: [] };
+    }
+
+    // Flat Rate Interest Calculation (assuming interest is applied to principal for the full term)
+    const totalInterest = principal * rate * duration;
+    const totalAmount = principal + totalInterest;
+
+    // Calculate total number of installments
+    const numInstallments = Math.ceil(duration / frequency);
+    const emiAmount = totalAmount / numInstallments;
+    
+    // Ensure all financial numbers are rounded to 2 decimal places
+    const finalEmiAmount = Math.round(emiAmount * 100) / 100;
+    const finalTotalAmount = Math.round(totalAmount * 100) / 100;
+
+    const schedule = [];
+    let currentDate = dateOfFinance; // Start date of finance
+    
+    // The first installment is DUE after 'frequency' months from finance date.
+    let dueDate = addMonths(currentDate, frequency);
+    
+    for (let i = 1; i <= numInstallments; i++) {
+        // For the simple flat rate model, we assume equal principal and interest components in each EMI
+        const principalComponent = principal / numInstallments;
+        const interestComponent = totalInterest / numInstallments;
+
+        schedule.push({
+            emiNumber: i,
+            dueDate: dueDate,
+            expectedAmount: finalEmiAmount,
+            principalComponent: Math.round(principalComponent * 100) / 100,
+            interestComponent: Math.round(interestComponent * 100) / 100,
+            paidAmount: 0,
+            status: 'Pending',
+        });
+
+        // Calculate next due date
+        dueDate = addMonths(dueDate, frequency);
+    }
+
+    return { emiAmount: finalEmiAmount, totalAmount: finalTotalAmount, schedule };
+};
+
+/**
+ * Calculates the penalty for an overdue installment.
+ * Penalty is 0.5% of the ORIGINAL PRINCIPAL AMOUNT per day.
+ * @param {number} principal - The original finance amount.
+ * @param {string} dueDate - The installment's due date (YYYY-MM-DD).
+ * @returns {number} The total penalty amount.
+ */
+const calculatePenalty = (principal, dueDate) => {
+    if (!dueDate || !principal || principal <= 0) return 0;
+    
+    const due = new Date(dueDate);
+    const today = new Date();
+    
+    // Reset time components for accurate day difference
+    due.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    if (today <= due) {
+        return 0; // Not yet overdue
+    }
+
+    const daysOverdue = differenceInDays(due, today);
+
+    // Penalty is 0.5% (0.005) of the ORIGINAL PRINCIPAL AMOUNT per day
+    const dailyPenaltyAmount = principal * 0.005;
+    const totalPenalty = dailyPenaltyAmount * daysOverdue;
+    
+    return Math.round(totalPenalty * 100) / 100;
+};
+
+
+// --- MAIN APP COMPONENT ---
+const App = () => {
+    const [page, setPage] = useState('Dashboard'); // Controls the current screen
+    const [financeRecords, setFinanceRecords] = useState([]);
+    const [selectedRecord, setSelectedRecord] = useState(null);
+    const [db, setDb] = useState(null);
+    const [auth, setAuth] = useState(null);
+    const [userId, setUserId] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [recordToDelete, setRecordToDelete] = useState(null);
+
+    // 1. Initialize Firebase & Auth
+    useEffect(() => {
+        try {
+            const app = initializeApp(firebaseConfig);
+            const firestore = getFirestore(app);
+            const authInstance = getAuth(app);
+            
+            setDb(firestore);
+            setAuth(authInstance);
+
+            const unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
+                let currentUserId;
+                if (user) {
+                    currentUserId = user.uid;
+                } else if (typeof __initial_auth_token !== 'undefined') {
+                    // Sign in with custom token
+                    try {
+                        const credential = await signInWithCustomToken(authInstance, __initial_auth_token);
+                        currentUserId = credential.user.uid;
+                    } catch (error) {
+                        console.error('Error signing in with custom token:', error);
+                        // Fallback to anonymous sign-in if custom token fails
+                        await signInAnonymously(authInstance);
+                        currentUserId = authInstance.currentUser.uid;
+                    }
+                } else {
+                    // Anonymous sign-in as a fallback
+                    await signInAnonymously(authInstance);
+                    currentUserId = authInstance.currentUser.uid;
+                }
+                setUserId(currentUserId);
+                setLoading(false);
+            });
+
+            return () => unsubscribeAuth();
+        } catch (error) {
+            console.error("Firebase initialization failed:", error);
+            setLoading(false);
+        }
+    }, []);
+
+    // 2. Fetch Records (Real-time with onSnapshot)
+    useEffect(() => {
+        if (!db || loading) return;
+
+        const recordsCollection = collection(db, getCollectionPath());
+        const q = query(recordsCollection);
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const records = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                dateOfFinance: doc.data().dateOfFinance || '', // Ensure date is string
+                insuranceRenewalDate: doc.data().insuranceRenewalDate || ''
+            }));
+            setFinanceRecords(records.sort((a, b) => new Date(b.dateOfFinance) - new Date(a.dateOfFinance)));
+        }, (error) => {
+            console.error("Error fetching finance records:", error);
+        });
+
+        return () => unsubscribe();
+    }, [db, loading]);
+
+
+    // --- CRUD OPERATIONS ---
+
+    const handleSaveRecord = async (data) => {
+        if (!db) return console.error('Firestore not initialized.');
+
+        // 1. Calculate EMI schedule and total amounts
+        const { emiAmount, totalAmount, schedule } = calculateSchedule(data);
+
+        // Preserve existing schedule for updates if it exists and finance details haven't changed
+        const existingRecord = financeRecords.find(r => r.id === data.id);
+        let finalSchedule = schedule;
+        if (data.id && existingRecord) {
+             // Simple check: if finance numbers haven't changed, reuse the old schedule (and paid status)
+             // In a real app, schedule recalculation on edit is complex; here we force recalculation on new record.
+             // If a user is editing, they are likely updating notes/details, not finance terms.
+             // For simplicity and matching the user's initial calculation:
+             // If finance terms change on edit, the paid amounts are reset for the new schedule.
+             if (emiAmount === existingRecord.emiAmount && totalAmount === existingRecord.totalAmount) {
+                 finalSchedule = existingRecord.schedule;
+             }
+        }
+        
+        const recordData = {
+            ...data,
+            emiAmount,
+            totalAmount,
+            schedule: finalSchedule,
+            rcBookStatus: data.rcBookStatus || 'Pending',
+            insuranceRenewalDate: data.insuranceRenewalDate || '',
+            status: finalSchedule.every(e => e.status === 'Paid') ? 'Completed' : 'Active', // Re-evaluate status
+            journal: existingRecord ? existingRecord.journal || [] : [],
+            createdAt: data.id ? data.createdAt : serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            financeAmount: parseFloat(data.financeAmount) || 0,
+            interestRate: parseFloat(data.interestRate) || 0,
+            totalDurationMonths: parseInt(data.totalDurationMonths, 10) || 0,
+            installmentFrequencyMonths: parseInt(data.installmentFrequencyMonths, 10) || 1,
+            outstandingDownpayment: parseFloat(data.outstandingDownpayment) || 0,
+            outstandingDueDays: parseInt(data.outstandingDueDays, 10) || 0,
+        };
+
+        try {
+            if (data.id) {
+                // Update existing record
+                await updateDoc(doc(db, getCollectionPath(), data.id), recordData);
+                console.log('Record updated successfully!');
+            } else {
+                // Add new record
+                await setDoc(doc(collection(db, getCollectionPath())), recordData);
+                console.log('Record added successfully!');
+            }
+            setPage('ViewRecords');
+            setSelectedRecord(null);
+        } catch (e) {
+            console.error('Error saving document: ', e);
+        }
+    };
+    
+    const handleDeleteRecord = async (id) => {
+        if (!db) return console.error('Firestore not initialized.');
+        
+        // This is a replacement for window.confirm to comply with the constraint.
+        if (!recordToDelete || recordToDelete.id !== id) return;
+        
+        try {
+            await deleteDoc(doc(db, getCollectionPath(), id));
+            setPage('ViewRecords');
+            setSelectedRecord(null);
+            setShowDeleteModal(false);
+            setRecordToDelete(null);
+            console.log('Record deleted successfully!');
+        } catch (e) {
+            console.error('Error deleting document: ', e);
+        }
+    };
+    
+    // --- PAYMENT HANDLING ---
+    
+    const handleAddPayment = async ({ recordId, date, amount, mode, notes }) => {
+        if (!db) return console.error('Firestore not initialized.');
+
+        const paymentAmount = parseFloat(amount);
+        if (isNaN(paymentAmount) || paymentAmount <= 0) {
+            console.error('Invalid payment amount.');
+            return;
+        }
+
+        const recordRef = doc(db, getCollectionPath(), recordId);
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const recordDoc = await transaction.get(recordRef);
+                if (!recordDoc.exists()) {
+                    throw "Record does not exist!";
+                }
+
+                const record = recordDoc.data();
+                let remainingPayment = paymentAmount;
+                const newSchedule = [...record.schedule];
+                let installmentsPaid = 0;
+                
+                // 1. Apply payment to oldest unpaid installment first
+                for (let i = 0; i < newSchedule.length && remainingPayment > 0; i++) {
+                    let installment = newSchedule[i];
+
+                    if (installment.paidAmount < installment.expectedAmount) {
+                        const unpaidAmount = installment.expectedAmount - installment.paidAmount;
+                        
+                        if (remainingPayment >= unpaidAmount) {
+                            // Fully pay off the installment
+                            installment.paidAmount = installment.expectedAmount;
+                            installment.status = 'Paid';
+                            remainingPayment -= unpaidAmount;
+                            installmentsPaid++;
+                        } else {
+                            // Apply partial payment
+                            installment.paidAmount += remainingPayment;
+                            remainingPayment = 0;
+                            break; // Stop loop, payment exhausted
+                        }
+                    }
+                }
+                
+                // Update record status if all EMIs are paid
+                const isCompleted = newSchedule.every(e => e.paidAmount >= e.expectedAmount);
+                const newRecordStatus = isCompleted ? 'Completed' : 'Active';
+
+                // 2. Add journal entry (Transaction log)
+                const newJournalEntry = {
+                    date: date,
+                    amount: paymentAmount,
+                    mode: mode,
+                    notes: notes,
+                    appliedTo: installmentsPaid, // number of installments fully paid
+                    remainingCredit: remainingPayment,
+                    timestamp: serverTimestamp()
+                };
+                
+                const currentJournal = record.journal || [];
+                currentJournal.push(newJournalEntry);
+
+                // Update the document in the transaction
+                transaction.update(recordRef, {
+                    schedule: newSchedule,
+                    status: newRecordStatus,
+                    journal: currentJournal,
+                    remainingCredit: remainingPayment,
+                    updatedAt: serverTimestamp()
+                });
+                
+                console.log(`Payment of ₹${paymentAmount} applied.`);
+            });
+        } catch (e) {
+            console.error("Transaction failed: ", e);
+        }
+    };
+    
+    const handleUpdateRcStatus = async (recordId, newStatus, insuranceDate) => {
+        if (!db) return console.error('Firestore not initialized.');
+        try {
+            await updateDoc(doc(db, getCollectionPath(), recordId), {
+                rcBookStatus: newStatus,
+                insuranceRenewalDate: insuranceDate,
+                updatedAt: serverTimestamp()
+            });
+            console.log(`RC Status updated to ${newStatus}`);
+        } catch (e) {
+            console.error('Error updating RC status:', e);
+        }
+    }
+
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Dashboard Component (Screen1.PNG)
+    const Dashboard = () => {
+        const totalActiveRecords = financeRecords.filter(r => r.status === 'Active').length;
+        
+        const { totalPendingEMIs, thisMonthDueCount, thisMonthDueAmount } = useMemo(() => {
+            let pendingAmount = 0;
+            let monthDueCount = 0;
+            let monthDueAmount = 0;
+            const today = new Date();
+            const currentMonth = today.getMonth();
+            const currentYear = today.getFullYear();
+
+            financeRecords.forEach(record => {
+                record.schedule.forEach(emi => {
+                    const balanceDue = emi.expectedAmount - emi.paidAmount;
+                    if (balanceDue > 0) {
+                        pendingAmount += balanceDue;
+                        
+                        const due = new Date(emi.dueDate);
+                        if (due.getMonth() === currentMonth && due.getFullYear() === currentYear) {
+                            monthDueCount++;
+                            monthDueAmount += balanceDue;
+                        }
+                    }
+                });
+            });
+
+            return {
+                totalPendingEMIs: Math.round(pendingAmount),
+                thisMonthDueCount: monthDueCount,
+                thisMonthDueAmount: Math.round(monthDueAmount),
+            };
+        }, [financeRecords]);
+
+
+        return (
+            <div className="p-6 bg-gray-50 min-h-screen">
+                <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
+                <p className="text-gray-500 mb-8">Overview of your finance records</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <Card title="Total Active Records" value={totalActiveRecords} subtitle="Currently active finance records" icon={<CalendarIcon className="w-6 h-6" />} />
+                    <Card title="Total Pending EMIs" value={`₹${totalPendingEMIs.toLocaleString('en-IN')}`} subtitle="Outstanding installment payments" icon={<CoinsIcon className="w-6 h-6" />} />
+                    <Card title="This Month Due" value={thisMonthDueCount} subtitle={`₹${thisMonthDueAmount.toLocaleString('en-IN')} pending due this month`} icon={<WalletIcon className="w-6 h-6" />} />
+                </div>
+
+                <div className="mt-10 flex flex-wrap gap-4">
+                    <Button onClick={() => setPage('AddRecord')} primary={true}>
+                        <PlusIcon className="w-5 h-5 mr-2" />
+                        Add New Record
+                    </Button>
+                    <Button onClick={() => setPage('ViewRecords')}>
+                        <ListIcon className="w-5 h-5 mr-2" />
+                        View All Records
+                    </Button>
+                    <Button onClick={() => setPage('DailyDueReport')} className="bg-orange-500 hover:bg-orange-600">
+                        <UsersIcon className="w-5 h-5 mr-2" />
+                        Daily Due Report (Staff)
+                    </Button>
+                </div>
+            </div>
+        );
+    };
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Add/Edit Record Component (Screen2.PNG, screen10.PNG)
+    const AddRecord = ({ recordToEdit, onSave }) => {
+        const initialState = recordToEdit || {
+            partyName: '', mobile: '', city: '',
+            vehicleModel: '', vehicleCondition: 'New', registrationNumber: '', keyNumber: '',
+            guarantorName: '', guarantorMobile: '', guarantorCity: '',
+            financeAmount: 0, interestRate: 0, dateOfFinance: todayDate,
+            totalDurationMonths: 1, installmentFrequencyMonths: 1, emiAmount: 0,
+            outstandingDownpayment: 0, outstandingDueDays: 0,
+            rcBookStatus: 'Pending', insuranceRenewalDate: '', notes: ''
+        };
+        const [formData, setFormData] = useState(initialState);
+        const [totalAmount, setTotalAmount] = useState(0);
+
+        // Update total amount and EMI on finance detail change
+        useEffect(() => {
+            const { totalAmount: calculatedTotal, emiAmount: calculatedEmi } = calculateSchedule(formData);
+            setTotalAmount(calculatedTotal);
+            setFormData(prev => ({ 
+                ...prev, 
+                totalAmount: calculatedTotal, 
+                emiAmount: calculatedEmi // Ensure calculated EMI is in form data for saving
+            }));
+        }, [formData.financeAmount, formData.interestRate, formData.totalDurationMonths, formData.installmentFrequencyMonths]);
+
+        const handleChange = (e) => {
+            const { name, value, type } = e.target;
+            setFormData(prev => ({
+                ...prev,
+                [name]: type === 'number' ? (value === '' ? '' : parseFloat(value)) : value
+            }));
+        };
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            if (formData.partyName.trim() === '' || parseFloat(formData.financeAmount) <= 0) {
+                console.error('Validation failed: Party Name and Finance Amount are required.');
+                return;
+            }
+            onSave(formData);
+        };
+        
+        return (
+            <div className="p-6 bg-white shadow-xl rounded-lg max-w-4xl mx-auto my-8">
+                <h1 className="text-3xl font-bold text-gray-800 mb-2">{recordToEdit ? 'Edit Finance Record' : 'Add Finance Record'}</h1>
+                <p className="text-gray-500 mb-8">Enter the details of the finance record</p>
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* Party Details */}
+                    <SectionTitle title="Party Details" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input label="Party Name *" name="partyName" value={formData.partyName} onChange={handleChange} required />
+                        <Input label="City *" name="city" value={formData.city} onChange={handleChange} required />
+                        <Input label="Mobile *" name="mobile" value={formData.mobile} onChange={handleChange} type="tel" required />
+                    </div>
+
+                    {/* Vehicle Details */}
+                    <SectionTitle title="Vehicle Details" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input label="Vehicle Model *" name="vehicleModel" value={formData.vehicleModel} onChange={handleChange} required />
+                        <Select label="Vehicle Condition *" name="vehicleCondition" value={formData.vehicleCondition} onChange={handleChange} options={['New', 'Used']} required />
+                        <Input label="Registration Number" name="registrationNumber" value={formData.registrationNumber} onChange={handleChange} />
+                        <Input label="Key Number" name="keyNumber" value={formData.keyNumber} onChange={handleChange} />
+                    </div>
+
+                    {/* Guarantor Details */}
+                    <SectionTitle title="Guarantor Details" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input label="Guarantor Name" name="guarantorName" value={formData.guarantorName} onChange={handleChange} />
+                        <Input label="Guarantor Mobile" name="guarantorMobile" value={formData.guarantorMobile} onChange={handleChange} type="tel" />
+                        <Input label="Guarantor City" name="guarantorCity" value={formData.guarantorCity} onChange={handleChange} />
+                    </div>
+
+                    {/* Finance Details (screen10.PNG) */}
+                    <SectionTitle title="Finance Details" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input label="Finance Amount (₹) *" name="financeAmount" value={formData.financeAmount} onChange={handleChange} type="number" required />
+                        <Input label="Interest Rate (% per month) *" name="interestRate" value={formData.interestRate} onChange={handleChange} type="number" step="0.01" required />
+                        <Input label="Date of Finance *" name="dateOfFinance" value={formData.dateOfFinance} onChange={handleChange} type="date" required />
+                        <Input label="Total Duration (Months) *" name="totalDurationMonths" value={formData.totalDurationMonths} onChange={handleChange} type="number" required />
+                        <Select label="Installment Frequency (X Months) *" name="installmentFrequencyMonths" value={formData.installmentFrequencyMonths} onChange={handleChange} options={[1, 2, 3, 6, 12].map(String)} required />
+                        <ReadOnlyInput label="Calculated Total Amount (₹)" value={totalAmount.toLocaleString('en-IN')} />
+                        <Input label="Outstanding/Downpayment Amount (₹)" name="outstandingDownpayment" value={formData.outstandingDownpayment} onChange={handleChange} type="number" />
+                        <Input label="Outstanding Due Days" name="outstandingDueDays" value={formData.outstandingDueDays} onChange={handleChange} type="number" />
+                    </div>
+                    
+                    {/* RC & Insurance Tracking */}
+                    <SectionTitle title="Document & Insurance Tracking" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Select label="RC Book Status" name="rcBookStatus" value={formData.rcBookStatus} onChange={handleChange} options={['Pending', 'Done']} required />
+                        <Input label="Insurance Renewal Date" name="insuranceRenewalDate" value={formData.insuranceRenewalDate} onChange={handleChange} type="date" />
+                    </div>
+
+                    <Input label="Notes (Optional)" name="notes" value={formData.notes} onChange={handleChange} type="textarea" />
+
+                    <div className="pt-4 flex justify-between">
+                        <Button type="button" onClick={() => setPage('Dashboard')} className="bg-gray-500 hover:bg-gray-600">
+                            Cancel
+                        </Button>
+                        <Button type="submit" primary={true}>
+                            <SaveIcon className="w-5 h-5 mr-2" />
+                            {recordToEdit ? 'Update Record' : 'Save Record'}
+                        </Button>
+                    </div>
+                </form>
+            </div>
+        );
+    };
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // View Records Component (Screen3.PNG, screen7.PNG)
+    const ViewRecords = () => {
+        const [searchTerm, setSearchTerm] = useState('');
+        const [cityFilter, setCityFilter] = useState('All');
+
+        const uniqueCities = useMemo(() => {
+            const cities = financeRecords.map(r => r.city).filter(Boolean);
+            return ['All', ...new Set(cities.sort())];
+        }, [financeRecords]);
+
+        const filteredRecords = useMemo(() => {
+            let filtered = financeRecords;
+
+            if (cityFilter !== 'All') {
+                filtered = filtered.filter(r => r.city === cityFilter);
+            }
+
+            if (searchTerm.trim() !== '') {
+                const lowerCaseSearch = searchTerm.toLowerCase();
+                filtered = filtered.filter(r => 
+                    r.partyName.toLowerCase().includes(lowerCaseSearch) ||
+                    r.mobile.includes(lowerCaseSearch) ||
+                    r.registrationNumber?.toLowerCase().includes(lowerCaseSearch)
+                );
+            }
+
+            return filtered;
+        }, [financeRecords, searchTerm, cityFilter]);
+
+        const getNextDueInfo = (record) => {
+            const nextDue = record.schedule.find(emi => emi.paidAmount < emi.expectedAmount);
+            if (nextDue) {
+                const dueStatus = isPast(nextDue.dueDate) ? 'Overdue' : 'Pending';
+                return {
+                    dueDate: formatDate(nextDue.dueDate),
+                    emiAmount: nextDue.expectedAmount,
+                    status: dueStatus,
+                };
+            }
+            return { dueDate: 'N/A', emiAmount: 0, status: 'Completed' };
+        };
+
+
+        return (
+            <div className="p-6 bg-gray-50 min-h-screen">
+                <h1 className="text-3xl font-bold text-gray-800 mb-2">Finance Records</h1>
+                <p className="text-gray-500 mb-8">View and manage all finance records</p>
+                
+                <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                    <input
+                        type="text"
+                        placeholder="Search by party name, mobile, or registration no..."
+                        className="p-3 border border-gray-300 rounded-lg flex-grow shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                    <select
+                        className="p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto bg-white"
+                        value={cityFilter}
+                        onChange={(e) => setCityFilter(e.target.value)}
+                    >
+                        {uniqueCities.map(city => (
+                            <option key={city} value={city}>{city} City</option>
+                        ))}
+                    </select>
+                    <Button onClick={() => { setSelectedRecord(null); setPage('AddRecord'); }} primary={true} className="w-full sm:w-auto">
+                        <PlusIcon className="w-5 h-5 mr-2" />
+                        Add Record
+                    </Button>
+                </div>
+                
+                <div className="bg-white rounded-lg shadow-xl overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <TableHeader title="Borrower (Name/Mobile)" />
+                                <TableHeader title="Principal (₹)" />
+                                <TableHeader title="EMI (₹)" />
+                                <TableHeader title="Next Due Date" />
+                                <TableHeader title="Reg. No." />
+                                <TableHeader title="Status" />
+                                <TableHeader title="Actions" />
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {filteredRecords.length > 0 ? (
+                                filteredRecords.map((record) => {
+                                    const dueInfo = getNextDueInfo(record);
+                                    return (
+                                        <tr key={record.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => { setSelectedRecord(record); setPage('RecordDetails'); }}>
+                                            <TableCell content={record.partyName} subContent={record.mobile} />
+                                            <TableCell content={`₹${record.financeAmount.toLocaleString('en-IN')}`} />
+                                            <TableCell content={`₹${record.emiAmount.toLocaleString('en-IN')}`} />
+                                            <TableCell content={dueInfo.dueDate} subContent={dueInfo.status === 'Overdue' ? 'OVERDUE' : ''} isOverdue={dueInfo.status === 'Overdue'}/>
+                                            <TableCell content={record.registrationNumber || 'N/A'} />
+                                            <TableCell>
+                                                <StatusBadge status={dueInfo.status === 'Completed' ? 'Completed' : record.status} />
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button size="sm" onClick={(e) => { e.stopPropagation(); setSelectedRecord(record); setPage('RecordDetails'); }}>
+                                                    View
+                                                </Button>
+                                            </TableCell>
+                                        </tr>
+                                    );
+                                })
+                            ) : (
+                                <tr>
+                                    <TableCell content="No records found." colSpan={7} className="text-center py-6" />
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Record Details Component (Screen4.PNG, Screen5.PNG, Screen8.PNG, Screen9.PNG)
+    const RecordDetails = ({ record, onEdit, onDelete, onAddPayment, onUpdateStatus, setPage }) => {
+        const [paymentData, setPaymentData] = useState({ date: todayDate, amount: 0, mode: 'Cash', notes: '' });
+        const [showPaymentForm, setShowPaymentForm] = useState(false);
+        const [rcStatus, setRcStatus] = useState(record.rcBookStatus || 'Pending');
+        const [insuranceDate, setInsuranceDate] = useState(record.insuranceRenewalDate || '');
+        const [showRcForm, setShowRcForm] = useState(false);
+        
+        const principalAmount = record.financeAmount || 0;
+
+        const updatedSchedule = useMemo(() => {
+            return record.schedule.map(emi => {
+                const balanceDue = emi.expectedAmount - emi.paidAmount;
+                const isOverdue = balanceDue > 0 && isPast(emi.dueDate);
+                const status = emi.paidAmount >= emi.expectedAmount ? 'Paid' : (isOverdue ? 'Overdue' : 'Pending');
+                const penalty = isOverdue ? calculatePenalty(principalAmount, emi.dueDate) : 0;
+
+                return {
+                    ...emi,
+                    status,
+                    penalty,
+                    balanceDue: balanceDue > 0 ? Math.round(balanceDue * 100) / 100 : 0,
+                    totalDue: balanceDue > 0 ? Math.round((balanceDue + penalty) * 100) / 100 : 0,
+                };
+            });
+        }, [record, principalAmount]);
+
+        const totalPaidAmount = record.journal?.reduce((sum, j) => sum + j.amount, 0) || 0;
+        const totalOutstanding = updatedSchedule.reduce((sum, emi) => sum + emi.totalDue, 0);
+
+        const handlePaymentSubmit = (e) => {
+            e.preventDefault();
+            onAddPayment({ recordId: record.id, ...paymentData });
+            setPaymentData({ date: todayDate, amount: 0, mode: 'Cash', notes: '' });
+            setShowPaymentForm(false);
+        };
+        
+        const handleStatusUpdateSubmit = (e) => {
+            e.preventDefault();
+            onUpdateStatus(record.id, rcStatus, insuranceDate);
+            setShowRcForm(false);
+        }
+
+        const handleShowDeleteModal = () => {
+            setRecordToDelete(record);
+            setShowDeleteModal(true);
+        }
+
+        return (
+            <div className="p-6 bg-gray-50 min-h-screen">
+                <div className="max-w-6xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-3xl font-bold text-gray-800">Record Detail: {record.partyName}</h1>
+                        <div className='flex gap-2'>
+                            <Button onClick={() => setPage('ViewRecords')} className="bg-gray-500 hover:bg-gray-600">Back</Button>
+                            <Button onClick={() => setPage('EditRecord')}><EditIcon className="w-4 h-4 mr-1"/> Edit</Button>
+                            <Button onClick={handleShowDeleteModal} className="bg-red-500 hover:bg-red-600 text-white"><TrashIcon className="w-4 h-4 mr-1"/> Delete</Button>
+                        </div>
+                    </div>
+
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+                        <Card title="Total Principal" value={`₹${record.financeAmount.toLocaleString('en-IN')}`} subtitle={`Total duration: ${record.totalDurationMonths} months`} icon={<CoinsIcon className="w-6 h-6"/>} />
+                        <Card title="Total Paid" value={`₹${Math.round(totalPaidAmount).toLocaleString('en-IN')}`} subtitle={`Remaining credit: ₹${Math.round(record.remainingCredit || 0)}`} icon={<WalletIcon className="w-6 h-6"/>} />
+                        <Card title="Total Outstanding" value={`₹${Math.round(totalOutstanding).toLocaleString('en-IN')}`} subtitle={`${updatedSchedule.filter(e => e.balanceDue > 0).length} EMIs pending/overdue`} icon={<UsersIcon className="w-6 h-6"/>} />
+                    </div>
+                    
+                    {/* Document Status and Actions */}
+                    <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
+                        <SectionTitle title="Document & Insurance Status" />
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4 items-start'>
+                            <ReadOnlyInput label="RC Book Status" value={<StatusBadge status={record.rcBookStatus === 'Done' ? 'RC Done' : 'RC Pending'} />} />
+                            <ReadOnlyInput label="Insurance Renewal Date" value={formatDate(record.insuranceRenewalDate)} />
+                            <div className='self-end'>
+                                <Button onClick={() => setShowRcForm(!showRcForm)} className="bg-yellow-500 hover:bg-yellow-600 text-white w-full">
+                                    {showRcForm ? 'Hide Status Form' : 'Update RC/Insurance'}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {showRcForm && (
+                            <form onSubmit={handleStatusUpdateSubmit} className="mt-4 border-t pt-4 space-y-4">
+                                <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                                    <Select 
+                                        label="New RC Book Status" 
+                                        name="rcBookStatus" 
+                                        value={rcStatus} 
+                                        onChange={(e) => setRcStatus(e.target.value)} 
+                                        options={['Pending', 'Done']} 
+                                        required 
+                                    />
+                                    <Input 
+                                        label="Insurance Renewal Date" 
+                                        name="insuranceRenewalDate" 
+                                        value={insuranceDate} 
+                                        onChange={(e) => setInsuranceDate(e.target.value)} 
+                                        type="date" 
+                                    />
+                                </div>
+                                <Button type="submit" primary={true}>Save Status Update</Button>
+                            </form>
+                        )}
+                    </div>
+                    
+                    {/* Payment Form (Screen4.PNG) */}
+                    <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
+                        <div className="flex justify-between items-center">
+                            <SectionTitle title="New Payment" className="mb-0 border-none"/>
+                            <Button onClick={() => setShowPaymentForm(!showPaymentForm)} primary={true} className="text-sm px-4 py-2">
+                                {showPaymentForm ? 'Hide Form' : <><PlusIcon className="w-4 h-4 mr-1"/> Add Payment</>}
+                            </Button>
+                        </div>
+                        
+                        {showPaymentForm && (
+                            <form onSubmit={handlePaymentSubmit} className="mt-4 border-t pt-4 space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input 
+                                        label="Payment Date *" 
+                                        name="date" 
+                                        type="date" 
+                                        value={paymentData.date} 
+                                        onChange={(e) => setPaymentData({...paymentData, date: e.target.value})} 
+                                        required 
+                                    />
+                                    <Input 
+                                        label="Amount Paid (₹) *" 
+                                        name="amount" 
+                                        type="number" 
+                                        value={paymentData.amount} 
+                                        onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})} 
+                                        step="0.01" 
+                                        required 
+                                    />
+                                    <Select 
+                                        label="Payment Mode *" 
+                                        name="mode" 
+                                        value={paymentData.mode} 
+                                        onChange={(e) => setPaymentData({...paymentData, mode: e.target.value})} 
+                                        options={['Cash', 'Bank Transfer', 'Cheque', 'UPI']} 
+                                        required 
+                                    />
+                                </div>
+                                <Input 
+                                    label="Notes (Optional)" 
+                                    name="notes" 
+                                    type="textarea" 
+                                    value={paymentData.notes} 
+                                    onChange={(e) => setPaymentData({...paymentData, notes: e.target.value})} 
+                                />
+                                <Button type="submit" primary={true} className="w-full">
+                                    <SaveIcon className="w-5 h-5 mr-2" />
+                                    Process Payment
+                                </Button>
+                            </form>
+                        )}
+                    </div>
+
+                    {/* EMI Schedule (Screen5.PNG, Screen8.PNG) */}
+                    <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
+                        <SectionTitle title="EMI Schedule" />
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <TableHeader title="EMI No." />
+                                        <TableHeader title="Due Date" />
+                                        <TableHeader title="Expected EMI (₹)" />
+                                        <TableHeader title="Paid (₹)" />
+                                        <TableHeader title="Penalty (₹)" />
+                                        <TableHeader title="Balance Due (₹)" />
+                                        <TableHeader title="Status" />
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {updatedSchedule.map((emi, index) => (
+                                        <tr key={index} className={emi.status === 'Overdue' ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}>
+                                            <TableCell content={emi.emiNumber} />
+                                            <TableCell content={formatDate(emi.dueDate)} />
+                                            <TableCell content={emi.expectedAmount.toLocaleString('en-IN')} />
+                                            <TableCell content={emi.paidAmount.toLocaleString('en-IN')} />
+                                            <TableCell content={emi.penalty.toLocaleString('en-IN')} isOverdue={emi.penalty > 0} />
+                                            <TableCell content={emi.totalDue.toLocaleString('en-IN')} isOverdue={emi.balanceDue > 0} />
+                                            <TableCell content={<StatusBadge status={emi.status} />} />
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Payment Journal / Transaction Log (Screen9.PNG) */}
+                    <div className="bg-white p-6 rounded-xl shadow-lg">
+                        <SectionTitle title="Payment Journal / Transaction Log" />
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <TableHeader title="Date" />
+                                        <TableHeader title="Amount (₹)" />
+                                        <TableHeader title="Mode" />
+                                        <TableHeader title="Notes" />
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {record.journal && record.journal.length > 0 ? (
+                                        record.journal.slice().reverse().map((entry, index) => (
+                                            <tr key={index} className='hover:bg-gray-50'>
+                                                <TableCell content={formatDate(entry.date)} />
+                                                <TableCell content={entry.amount.toLocaleString('en-IN')} />
+                                                <TableCell content={entry.mode} />
+                                                <TableCell content={entry.notes || '-'} />
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <TableCell content="No payments recorded yet." colSpan={4} className="text-center py-4" />
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        );
+    };
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Daily Due Report Component (Screen6.PNG)
+    const DailyDueReport = () => {
+
+        const dueReport = useMemo(() => {
+            const report = [];
+            const today = new Date(todayDate); // Normalized date for comparison
+
+            financeRecords.forEach(record => {
+                record.schedule.forEach(emi => {
+                    const balanceDue = emi.expectedAmount - emi.paidAmount;
+                    
+                    // Filter for EMIs that are currently pending/overdue
+                    if (balanceDue > 0) {
+                        const dueDate = new Date(emi.dueDate);
+                        
+                        // Report includes EMIs due on or before today
+                        if (dueDate <= today) {
+                            const penalty = calculatePenalty(record.financeAmount, emi.dueDate);
+                            const isOverdue = dueDate < today;
+
+                            report.push({
+                                ...record,
+                                emi: emi,
+                                penalty,
+                                balanceDue: balanceDue,
+                                totalDue: balanceDue + penalty,
+                                isOverdue: isOverdue,
+                            });
+                        }
+                    }
+                });
+            });
+            // Sort by due date, oldest first
+            return report.sort((a, b) => new Date(a.emi.dueDate) - new Date(b.emi.dueDate));
+        }, [financeRecords]);
+
+        const totalDueAmount = dueReport.reduce((sum, item) => sum + item.totalDue, 0);
+
+        return (
+            <div className="p-6 bg-gray-50 min-h-screen">
+                <h1 className="text-3xl font-bold text-gray-800 mb-2">Daily Due Report</h1>
+                <p className="text-gray-500 mb-4">EMIs due on or before {formatDate(todayDate)}</p>
+                <div className="max-w-6xl mx-auto">
+                    <Card title="Total Collection Due" value={`₹${Math.round(totalDueAmount).toLocaleString('en-IN')}`} subtitle={`${dueReport.length} installments pending`} icon={<CoinsIcon className="w-6 h-6"/>} />
+
+                    <div className="bg-white rounded-lg shadow-xl overflow-x-auto mt-8">
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <TableHeader title="Due Date" />
+                                    <TableHeader title="Party Name/Mobile" />
+                                    <TableHeader title="Reg. No." />
+                                    <TableHeader title="EMI No." />
+                                    <TableHeader title="EMI Amount (₹)" />
+                                    <TableHeader title="Penalty (₹)" />
+                                    <TableHeader title="Total Due (₹)" />
+                                    <TableHeader title="Status" />
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {dueReport.length > 0 ? (
+                                    dueReport.map((item, index) => (
+                                        <tr key={index} className={item.isOverdue ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}>
+                                            <TableCell content={formatDate(item.emi.dueDate)} isOverdue={item.isOverdue} />
+                                            <TableCell content={item.partyName} subContent={item.mobile} />
+                                            <TableCell content={item.registrationNumber || 'N/A'} />
+                                            <TableCell content={item.emi.emiNumber} />
+                                            <TableCell content={item.emi.expectedAmount.toLocaleString('en-IN')} />
+                                            <TableCell content={item.penalty.toLocaleString('en-IN')} />
+                                            <TableCell content={item.totalDue.toLocaleString('en-IN')} className='font-bold' />
+                                            <TableCell content={<StatusBadge status={item.isOverdue ? 'Overdue' : 'Pending'} />} />
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <TableCell content="No pending EMIs due today or earlier." colSpan={8} className="text-center py-6" />
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // --- Confirmation Modal (Replaces window.confirm) ---
+    const DeleteConfirmationModal = () => {
+        if (!showDeleteModal || !recordToDelete) return null;
+
+        return (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center">
+                <div className="bg-white p-8 rounded-xl shadow-2xl max-w-sm w-full">
+                    <div className="flex justify-between items-start mb-4">
+                        <h3 className="text-xl font-bold text-red-700">Confirm Deletion</h3>
+                        <button onClick={() => setShowDeleteModal(false)}><XIcon className="w-6 h-6 text-gray-400 hover:text-gray-600" /></button>
+                    </div>
+                    <p className="mb-6 text-gray-700">
+                        Are you sure you want to delete the record for <span className="font-semibold">{recordToDelete.partyName}</span>? This action cannot be undone.
+                    </p>
+                    <div className="flex justify-end gap-3">
+                        <Button onClick={() => setShowDeleteModal(false)} className="bg-gray-300 hover:bg-gray-400">
+                            Cancel
+                        </Button>
+                        <Button onClick={() => handleDeleteRecord(recordToDelete.id)} className="bg-red-600 hover:bg-red-700 text-white">
+                            Delete Permanently
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+
+    // --- MAIN RENDER LOGIC ---
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-100">
+                <div className="text-xl font-semibold text-blue-600">Loading Finance Manager...</div>
+            </div>
+        );
+    }
+
+    let CurrentScreen;
+    switch (page) {
+        case 'Dashboard':
+            CurrentScreen = <Dashboard />;
+            break;
+        case 'ViewRecords':
+            CurrentScreen = <ViewRecords />;
+            break;
+        case 'AddRecord':
+            CurrentScreen = <AddRecord onSave={handleSaveRecord} />;
+            break;
+        case 'EditRecord':
+            CurrentScreen = <AddRecord recordToEdit={selectedRecord} onSave={handleSaveRecord} />;
+            break;
+        case 'RecordDetails':
+            CurrentScreen = <RecordDetails 
+                record={selectedRecord} 
+                onEdit={() => setPage('EditRecord')} 
+                onDelete={() => { /* Handled via modal now */ }} 
+                onAddPayment={handleAddPayment} 
+                onUpdateStatus={handleUpdateRcStatus} 
+                setPage={setPage}
+            />;
+            break;
+        case 'DailyDueReport':
+            CurrentScreen = <DailyDueReport />;
+            break;
+        default:
+            CurrentScreen = <Dashboard />;
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-100 font-sans">
+            <header className="bg-white shadow-md p-4 sticky top-0 z-10">
+                <div className="max-w-7xl mx-auto flex justify-between items-center">
+                    <div className="text-2xl font-extrabold text-blue-700">
+                        Finance Tracker <span className='text-sm text-gray-500 font-normal'>({userId})</span>
+                    </div>
+                    <Button onClick={() => setPage('Dashboard')} className="bg-blue-500 text-white hover:bg-blue-600">
+                        Home
+                    </Button>
+                </div>
+            </header>
+            
+            <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                {CurrentScreen}
+            </main>
+            <DeleteConfirmationModal />
+        </div>
+    );
+};
+
+export default App;
